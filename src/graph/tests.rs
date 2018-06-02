@@ -39,7 +39,10 @@ const SEEDS: [[u8; 16]; 32] = [
 #[test]
 fn generate_directed() {
     let graph = AdjLists::gen_directed(30, 100, 1, SEEDS.iter().cloned());
+    assert!(graph.vertices().count() == 30);
+    assert!(graph.edges().count() == 100);
 
+    let graph = AdjLists::gen_directed(30, 100, 4, SEEDS.iter().cloned());
     assert!(graph.vertices().count() == 30);
     assert!(graph.edges().count() == 100);
 }

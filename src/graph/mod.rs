@@ -14,6 +14,27 @@ use std::ops::Range;
 /// non-cryptographically secure PRNG provided by `rand`.
 pub type Prng = rand::prng::XorShiftRng;
 
+/// Simple graph represented using adjacency lists.
+///
+/// Vertices are represented with integer ids in `0..n_verts`.
+/// An edge *(u, v)* from `u` to `v` is represented by storing `v`
+/// in the vector `lists[u]`.
+///
+/// For example the graph with vertices {0, 1, 2} and edges
+/// {(0, 1), (0, 2), (1, 2)} is represented by
+///
+/// ```ignore
+/// lists = [
+///     [1, 2], // index 0: edges (0, 1) and (0, 2)
+///     [2],    // index 1: edges (1, 2)
+///     [],     // index 2: no edges
+/// ]
+/// ```
+///
+/// The graph is directed. An undirected graph is represented
+/// by adding an edge in both directions (ie *(u, v)* and *(v, u)*).
+/// Loops (*(u, u)* edges) and multiple edges are not allowed.
+///
 #[derive(Debug, Clone)]
 pub struct AdjLists {
     n_verts: usize,
@@ -21,6 +42,7 @@ pub struct AdjLists {
 }
 
 impl AdjLists {
+    /// Create new empty graph
     pub fn new(n_verts: usize) -> Self {
         AdjLists {
             n_verts,
@@ -28,6 +50,20 @@ impl AdjLists {
         }
     }
 
+    /// Create new directed graph with randomly generated edges.
+    ///
+    /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated edges.
+    /// The job is split between `n_threads` threads.
+    ///
+    /// `seeds` is an iterator with initial states to use for thread local random number generators
+    /// if reproducibility is required. If there are more threads than elements in the iterator
+    /// elements will be reused. Can be `None`, in which case random seeds will be chosen.
+    ///
+    /// # Panics
+    ///
+    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices (`n_verts  *
+    /// (n_verts - 1)`)
+    ///
     pub fn gen_directed<I>(n_verts: usize, n_edges: usize, n_threads: usize, seeds: I) -> Self
     where
         I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
@@ -42,13 +78,9 @@ impl AdjLists {
 
         rayon::scope(|scope| {
             for i in 0..n_threads {
-                let verts_per_thread = (1.0 / n_threads as f32) * n_verts as f32;
+                let from_verts = Self::subrange(0..n_verts, i, i + 1, n_threads);
 
-                let from_verts = Range {
-                    start: (i as f32 * verts_per_thread).floor() as usize,
-                    end: ((i + 1) as f32 * verts_per_thread).floor() as usize,
-                };
-
+                // `mem::replace` to "trick" the borrow checker
                 let tmp = mem::replace(&mut state, &mut []);
                 let (lists, next) = tmp.split_at_mut(from_verts.end - from_verts.start);
                 state = next;
@@ -59,10 +91,7 @@ impl AdjLists {
                     lists: lists,
                 };
 
-                let edges_per_thread = (1.0 / n_threads as f32) * n_edges as f32;
-                let edges = ((i + 1) as f32 * edges_per_thread).floor() as usize -
-                    (i as f32 * edges_per_thread).floor() as usize;
-
+                let edges = Self::subrange(0..n_edges, i, i + 1, n_threads).len();
                 let seed = seeds.next();
 
                 scope.spawn(move |_| part.gen(edges, seed));
@@ -72,6 +101,9 @@ impl AdjLists {
         graph
     }
 
+    /// Sort the graph, so that edges come in order for `edges` and `neighbours`.
+    ///
+    /// Uses `rayon` for pararellism.
     pub fn sort(&mut self) {
         self.lists.par_iter_mut().for_each(|list| list.sort_unstable())
     }
@@ -93,6 +125,16 @@ impl AdjLists {
     pub fn neighbours<'a>(&'a self, v: usize) -> impl Iterator<Item = usize> + 'a {
         self.lists[v].iter().cloned()
     }
+
+    fn subrange(range: Range<usize>, from: usize, to: usize, total: usize) -> Range<usize> {
+        let from = from as f32 / total as f32;
+        let to = to as f32 / total as f32;
+
+        Range {
+            start: (range.start as f32 + from * range.len() as f32).floor() as usize,
+            end: (range.start as f32 + to * range.len() as f32).floor() as usize,
+        }
+    }
 }
 
 struct DirectedPart<'a> {
@@ -109,18 +151,28 @@ impl<'a> DirectedPart<'a> {
             None => Prng::from_entropy(),
         };
 
-        let from_range = Uniform::new(0, self.from_verts.end - self.from_verts.start);
+        let from_range = Uniform::new(self.v_to_i(self.from_verts.start), self.v_to_i(self.from_verts.end));
         let to_range = Uniform::new(self.to_verts.start, self.to_verts.end);
 
         while added < n_edges {
             let from = from_range.sample(&mut rng);
             let to = to_range.sample(&mut rng);
 
-            if from != to && self.lists[from].iter().find(|&&e| e == to).is_none() {
+            if self.i_to_v(from) != to && self.lists[from].iter().find(|&&e| e == to).is_none() {
                 self.lists[from].push(to);
                 added += 1;
             }
         }
+    }
+
+    /// Convert from vertex id to index in this part's slice of lists.
+    fn v_to_i(&self, v: usize) -> usize {
+        v - self.from_verts.start
+    }
+
+    /// Convert from index in this part's slice of lists to vertex id.
+    fn i_to_v(&self, i: usize) -> usize {
+        i + self.from_verts.start
     }
 }
 

@@ -5,6 +5,10 @@ extern crate rayon;
 
 pub mod graph;
 
+use graph::AdjLists;
+
 fn main() {
-    println!("Hello, world!");
+    let mut graph = AdjLists::gen_directed(10, 30, 4, None);
+    graph.sort();
+    println!("{:?}", graph);
 }
