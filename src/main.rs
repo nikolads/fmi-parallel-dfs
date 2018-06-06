@@ -8,7 +8,7 @@ pub mod graph;
 use graph::AdjLists;
 
 fn main() {
-    let mut graph = AdjLists::gen_directed(10, 30, 4, None);
+    let mut graph = AdjLists::gen_directed(10, 30, None);
     graph.sort();
     println!("{:?}", graph);
 }

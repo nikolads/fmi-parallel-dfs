@@ -38,11 +38,23 @@ const SEEDS: [[u8; 16]; 32] = [
 
 #[test]
 fn generate_directed() {
-    let graph = AdjLists::gen_directed(30, 100, 1, SEEDS.iter().cloned());
-    assert!(graph.vertices().count() == 30);
-    assert!(graph.edges().count() == 100);
+    let graph = AdjLists::gen_directed(30, 100, SEEDS.iter().cloned().cycle());
+    assert_eq!(graph.vertices().count(), 30);
+    assert_eq!(graph.edges().count(), 100);
 
-    let graph = AdjLists::gen_directed(30, 100, 4, SEEDS.iter().cloned());
-    assert!(graph.vertices().count() == 30);
-    assert!(graph.edges().count() == 100);
+    let graph = AdjLists::gen_directed(300, 10000, SEEDS.iter().cloned().cycle());
+    assert_eq!(graph.vertices().count(), 300);
+    assert_eq!(graph.edges().count(), 10000);
+}
+
+
+#[test]
+fn generate_directed_threads() {
+    let graph = AdjLists::gen_directed_on_threads(30, 100, 1, SEEDS.iter().cloned());
+    assert_eq!(graph.vertices().count(), 30);
+    assert_eq!(graph.edges().count(), 100);
+
+    let graph = AdjLists::gen_directed_on_threads(30, 100, 4, SEEDS.iter().cloned());
+    assert_eq!(graph.vertices().count(), 30);
+    assert_eq!(graph.edges().count(), 100);
 }
