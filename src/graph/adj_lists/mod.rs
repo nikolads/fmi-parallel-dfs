@@ -4,12 +4,12 @@ use rand::prelude::*;
 use rayon;
 use rayon::prelude::*;
 
+use graph::Edge;
+
 use std::cmp;
 use std::iter;
 use std::mem;
 use std::ops::Range;
-
-use graph::Edge;
 
 /// Pseudo-random number generator algorithm used in this module.
 ///
@@ -172,6 +172,10 @@ impl AdjLists {
     /// Returns iterator over all vertices in the graph.
     pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
         0..self.n_verts
+    }
+
+    pub fn vertices_par<'a>(&'a self) -> impl ParallelIterator<Item = usize> + 'a {
+        (0..self.n_verts).into_par_iter()
     }
 
     /// Returns iterator over all edges in the graph.

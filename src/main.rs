@@ -4,6 +4,7 @@ extern crate rand;
 extern crate rayon;
 
 pub mod graph;
+pub mod dfs;
 
 use graph::AdjLists;
 
