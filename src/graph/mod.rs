@@ -24,7 +24,7 @@ pub type Prng = rand::prng::XorShiftRng;
 /// For example the graph with vertices {0, 1, 2} and edges
 /// {(0, 1), (0, 2), (1, 2)} is represented by
 ///
-/// ```ignore
+/// ```
 /// lists = [
 ///     [1, 2], // index 0: edges (0, 1) and (0, 2)
 ///     [2],    // index 1: edges (1, 2)
@@ -74,6 +74,7 @@ impl AdjLists {
         // Number of vertices bellow which we prefer to calculate sequentially instead of
         // parallelizing across multiple tasks.
         // TODO: benchmark to choose an appropriate value
+        // TODO: should we parallelize over number of edges instead?
         const VERTS_PER_CHUNK: usize = 128;
 
         let mut graph = AdjLists::new(n_verts);
@@ -115,6 +116,8 @@ impl AdjLists {
     /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated edges.
     /// The job is manually split between `n_threads` threads.
     ///
+    /// This exists mostly to benchmark against `gen_directed`.
+    ///
     /// # Panics
     ///
     /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices (`n_verts  *
@@ -123,14 +126,14 @@ impl AdjLists {
     pub fn gen_directed_on_threads<I>(n_verts: usize, n_edges: usize, n_threads: usize, seeds: I) -> Self
     where
         I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
-        <I as IntoIterator>::IntoIter: Clone + Send,
+        <I as IntoIterator>::IntoIter: Send,
     {
         assert!(n_edges <= n_verts * (n_verts - 1));
 
         let mut graph = AdjLists::new(n_verts);
 
         let mut state = &mut graph.lists[..];
-        let mut seeds = seeds.into_iter().cycle();
+        let mut seeds = seeds.into_iter();
 
         rayon::scope(|scope| {
             for i in 0..n_threads {
