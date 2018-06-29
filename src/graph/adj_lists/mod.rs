@@ -5,8 +5,8 @@ use rayon;
 use rayon::prelude::*;
 
 use graph::Edge;
+use mirror;
 
-use std::cmp;
 use std::iter;
 use std::mem;
 use std::ops::Range;
@@ -96,18 +96,14 @@ impl AdjLists {
             .enumerate()
             .zip(seeds)
             .for_each(|((i, lists), seed)| {
-                let edges = Self::subrange(
-                    0..n_edges,
-                    i * VERTS_PER_CHUNK,
-                    i * VERTS_PER_CHUNK + lists.len(),
-                    n_verts
-                ).len();
-
-                DirectedPart {
-                    from_verts: (i * VERTS_PER_CHUNK)..cmp::min((i + 1) * VERTS_PER_CHUNK, n_verts),
+                let mut part = DirectedPart {
+                    from_verts: (i * VERTS_PER_CHUNK)..(i * VERTS_PER_CHUNK + lists.len()),
                     to_verts: 0..n_verts,
                     lists,
-                }.gen(edges, seed);
+                };
+
+                let edges = part.subrange(0..n_edges, n_verts).len();
+                part.gen(edges, seed);
             });
 
         graph
@@ -158,6 +154,59 @@ impl AdjLists {
                 scope.spawn(move |_| part.gen(edges, seed));
             }
         });
+
+        graph
+    }
+
+    /// Create new undirected graph with randomly generated edges.
+    ///
+    /// Creates a graph with `n_verts` vertices and a total of `2 * n_edges` edges.
+    /// Edges are created symmetrically, i.e. if *(u, v)* exists then *(v, u)* exists too.
+    ///
+    /// The job is automatically parallelized by `rayon`.
+    /// `seeds` is an iterator with initial states to use for local random number generators
+    /// if reproducibility is required. If there aren't enough elements in the iterator
+    /// random seeds will be chosen. `None` can be passed to use entirely random seeds.
+    ///
+    /// # Panics
+    ///
+    /// If `2 * n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
+    /// (`n_verts  * (n_verts - 1)`)
+    ///
+    pub fn gen_undirected<I>(n_verts: usize, n_edges: usize, seeds: I) -> Self
+    where
+        I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
+    {
+        assert!(n_edges <= n_verts * (n_verts - 1) / 2);
+
+        const VERTS_PER_CHUNK: usize = 128;
+
+        let mut graph = AdjLists::new(n_verts);
+
+        let seeds = seeds
+            .into_iter()
+            .map(|s| Some(s))
+            .chain(iter::repeat(None))
+            .take(graph.lists.chunks(VERTS_PER_CHUNK).count())
+            .collect::<Vec<_>>();
+
+        graph
+            .lists
+            .par_chunks_mut(VERTS_PER_CHUNK)
+            .enumerate()
+            .zip(seeds)
+            .for_each(|((i, lists), seed)| {
+                let mut part = UndirectedPart {
+                    from_verts: (i * VERTS_PER_CHUNK)..(i * VERTS_PER_CHUNK + lists.len()),
+                    to_verts: 0..(i * VERTS_PER_CHUNK + lists.len()),
+                    lists,
+                };
+
+                let edges = part.subrange(0..n_edges, n_verts).len();
+                part.gen(edges, seed);
+            });
+
+        mirror::seq(&mut graph.lists);
 
         graph
     }
@@ -218,28 +267,75 @@ impl<'a> DirectedPart<'a> {
             None => Prng::from_entropy(),
         };
 
-        let from_range = Uniform::new(self.v_to_i(self.from_verts.start), self.v_to_i(self.from_verts.end));
+        let from_range = Uniform::new(self.from_verts.start, self.from_verts.end);
         let to_range = Uniform::new(self.to_verts.start, self.to_verts.end);
 
         while added < n_edges {
             let from = from_range.sample(&mut rng);
             let to = to_range.sample(&mut rng);
 
-            if self.i_to_v(from) != to && self.lists[from].iter().find(|&&e| e == to).is_none() {
-                self.lists[from].push(to);
+            if from != to && self.list_at(from).iter().find(|&&e| e == to).is_none() {
+                self.list_at(from).push(to);
                 added += 1;
             }
         }
     }
 
-    /// Convert from vertex id to index in this part's slice of lists.
-    fn v_to_i(&self, v: usize) -> usize {
-        v - self.from_verts.start
+    fn subrange(&self, range: Range<usize>, total: usize) -> Range<usize> {
+        let from = self.from_verts.start as f32 / total as f32;
+        let to = self.from_verts.end as f32 / total as f32;
+
+        Range {
+            start: (range.start as f32 + from * range.len() as f32).floor() as usize,
+            end: (range.start as f32 + to * range.len() as f32).floor() as usize,
+        }
     }
 
-    /// Convert from index in this part's slice of lists to vertex id.
-    fn i_to_v(&self, i: usize) -> usize {
-        i + self.from_verts.start
+    fn list_at(&mut self, v: usize) -> &mut Vec<usize> {
+        &mut self.lists[v - self.from_verts.start]
+    }
+}
+
+struct UndirectedPart<'a> {
+    from_verts: Range<usize>,
+    to_verts: Range<usize>,
+    lists: &'a mut [Vec<usize>]
+}
+
+impl<'a> UndirectedPart<'a> {
+    fn gen(&mut self, n_edges: usize, seed: Option<<Prng as SeedableRng>::Seed>) {
+        let mut added = 0;
+        let mut rng = match seed {
+            Some(seed) => Prng::from_seed(seed),
+            None => Prng::from_entropy(),
+        };
+
+        let from_range = Uniform::new(self.from_verts.start, self.from_verts.end);
+        let to_range = Uniform::new(self.to_verts.start, self.to_verts.end);
+
+        while added < n_edges {
+            let from = from_range.sample(&mut rng);
+            let to = to_range.sample(&mut rng);
+
+            if from > to && self.list_at(from).iter().find(|&&e| e == to).is_none() {
+                self.list_at(from).push(to);
+                added += 1;
+            }
+        }
+    }
+
+    fn subrange(&self, range: Range<usize>, total: usize) -> Range<usize> {
+        let from = self.from_verts.start as f32 / total as f32;
+        let to = self.from_verts.end as f32 / total as f32;
+
+        Range {
+            start: (range.start as f32 + from * from * range.len() as f32).floor() as usize,
+            end: (range.start as f32 + to * to * range.len() as f32).floor() as usize,
+        }
+    }
+
+    fn list_at(&mut self, v: usize) -> &mut Vec<usize> {
+        &mut self.lists[v - self.from_verts.start]
     }
 }
 

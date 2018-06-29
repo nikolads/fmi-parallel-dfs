@@ -3,5 +3,6 @@
 extern crate rand;
 extern crate rayon;
 
-pub mod graph;
 pub mod dfs;
+pub mod graph;
+pub mod mirror;
