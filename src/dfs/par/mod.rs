@@ -25,7 +25,7 @@ pub fn run(graph: &Graph) -> Vec<Tree> {
             let mut state = State::new(root, &owner);
             let mut tree = Tree::new(root);
 
-            for v in graph.neighbours(root) {
+            for v in graph.neighbours(root).rev() {
                 if state.get(v).is_owned_unused() {
                     stack.push((root, v));
                 }
@@ -36,7 +36,7 @@ pub fn run(graph: &Graph) -> Vec<Tree> {
                     state.mark_used(v);
                     tree.add(Edge::new(parent, v));
 
-                    for child in graph.neighbours(v) {
+                    for child in graph.neighbours(v).rev() {
                         if state.get(child).is_owned_unused() {
                             stack.push((v, child));
                         }

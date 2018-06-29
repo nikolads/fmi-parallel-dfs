@@ -26,7 +26,7 @@ pub type Prng = rand::prng::XorShiftRng;
 /// For example the graph with vertices {0, 1, 2} and edges
 /// {(0, 1), (0, 2), (1, 2)} is represented by
 ///
-/// ```
+/// ```ignore
 /// lists = [
 ///     [1, 2], // index 0: edges (0, 1) and (0, 2)
 ///     [2],    // index 1: edges (1, 2)
@@ -170,7 +170,7 @@ impl AdjLists {
     }
 
     /// Returns iterator over all vertices in the graph.
-    pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + 'a {
+    pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
         0..self.n_verts
     }
 
@@ -188,7 +188,7 @@ impl AdjLists {
     /// Return iterator over the neighbours of vertex `v`.
     ///
     /// The neighbours are all vertices `u` such that an edge from `v` to `u` exists.
-    pub fn neighbours<'a>(&'a self, v: usize) -> impl Iterator<Item = usize> + 'a {
+    pub fn neighbours<'a>(&'a self, v: usize) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
         self.lists[v].iter().cloned()
     }
 
