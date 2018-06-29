@@ -7,7 +7,7 @@ extern crate rayon;
 extern crate test;
 
 use parallel_dfs::graph::AdjLists;
-use parallel_dfs::dfs::{par, seq};
+use parallel_dfs::dfs;
 use rand::prelude::*;
 use rand::distributions::Standard;
 use rand::prng::XorShiftRng;
@@ -31,7 +31,7 @@ macro bench_par($name: ident, $t: expr, $n: expr, $m: expr) {
         // > Executes `op` within the threadpool. Any attempts to use `join`, `scope`,
         // > or parallel iterators will then operate within that threadpool.
         thread_pool.install(|| {
-            bencher.iter(|| par::run(&graph));
+            bencher.iter(|| dfs::par(&graph));
         });
     }
 }
@@ -42,7 +42,7 @@ macro bench_seq($name: ident, $n: expr, $m: expr) {
         let mut rng = XorShiftRng::from_seed(SEED);
         let graph = AdjLists::gen_directed($n, $m, rng.sample_iter(&Standard));
 
-        bencher.iter(|| seq::run(&graph));
+        bencher.iter(|| dfs::seq(&graph));
     }
 }
 

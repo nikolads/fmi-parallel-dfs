@@ -6,7 +6,7 @@ use super::*;
 #[test]
 fn visits_all() {
     let graph = Graph::gen_directed(100, 1000, None);
-    let forest = run(&graph);
+    let forest = dfs::par(&graph);
 
     let mut visited = vec![0; graph.vertices().count()];
 
@@ -32,8 +32,8 @@ fn matches_seq() {
 
     thread_pool.install(|| {
         let graph = Graph::gen_directed(100, 1000, None);
-        let mut answer = dfs::seq::run(&graph);
-        let mut forest = run(&graph);
+        let mut answer = dfs::seq(&graph);
+        let mut forest = dfs::par(&graph);
 
         answer.sort_unstable_by_key(|tree| tree.root);
         forest.sort_unstable_by_key(|tree| tree.root);

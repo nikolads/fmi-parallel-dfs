@@ -4,6 +4,7 @@ mod tree;
 pub use self::adj_lists::AdjLists;
 pub use self::tree::Tree;
 
+/// Graph edge.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Edge {
     pub from: usize,

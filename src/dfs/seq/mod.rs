@@ -1,5 +1,8 @@
+//! Sequential DFS
+
 use graph::{AdjLists as Graph, Edge, Tree};
 
+/// Perform a sequential DFS traversal of the graph and build a forest showing how it was traversed.
 pub fn run(graph: &Graph) -> Vec<Tree> {
     let mut result = Vec::new();
     let mut used = vec![false; graph.vertices().count()];

@@ -15,7 +15,7 @@ use std::ops::Range;
 ///
 /// Using XorShift because it is currently the only
 /// non-cryptographically secure PRNG provided by `rand`.
-pub type Prng = rand::prng::XorShiftRng;
+type Prng = rand::prng::XorShiftRng;
 
 /// Simple graph represented using adjacency lists.
 ///
@@ -60,12 +60,12 @@ impl AdjLists {
     ///
     /// `seeds` is an iterator with initial states to use for local random number generators
     /// if reproducibility is required. If there aren't enough elements in the iterator
-    /// random seeds will be chosen.
+    /// random seeds will be chosen. `None` can be passed to use entirely random seeds.
     ///
     /// # Panics
     ///
-    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices (`n_verts  *
-    /// (n_verts - 1)`)
+    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
+    /// (`n_verts  * (n_verts - 1)`)
     ///
     pub fn gen_directed<I>(n_verts: usize, n_edges: usize, seeds: I) -> Self
     where
@@ -122,8 +122,8 @@ impl AdjLists {
     ///
     /// # Panics
     ///
-    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices (`n_verts  *
-    /// (n_verts - 1)`)
+    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
+    /// (`n_verts  * (n_verts - 1)`)
     ///
     pub fn gen_directed_on_threads<I>(n_verts: usize, n_edges: usize, n_threads: usize, seeds: I) -> Self
     where
@@ -169,23 +169,24 @@ impl AdjLists {
         self.lists.par_iter_mut().for_each(|list| list.sort_unstable())
     }
 
-    /// Returns iterator over all vertices in the graph.
+    /// Iterator over all vertices in the graph.
     pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
         0..self.n_verts
     }
 
+    /// Rayon parallel iterator over all vertices in the graph.
     pub fn vertices_par<'a>(&'a self) -> impl ParallelIterator<Item = usize> + 'a {
         (0..self.n_verts).into_par_iter()
     }
 
-    /// Returns iterator over all edges in the graph.
+    /// Iterator over all edges in the graph.
     pub fn edges<'a>(&'a self) -> impl Iterator<Item = Edge> + 'a {
         self.vertices()
             .flat_map(move |v| iter::repeat(v).zip(self.neighbours(v)))
             .map(|(from, to)| Edge::new(from, to))
     }
 
-    /// Return iterator over the neighbours of vertex `v`.
+    /// Iterator over the neighbours of vertex `v`.
     ///
     /// The neighbours are all vertices `u` such that an edge from `v` to `u` exists.
     pub fn neighbours<'a>(&'a self, v: usize) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {

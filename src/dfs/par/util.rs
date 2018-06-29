@@ -1,11 +1,16 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::usize;
 
+/// State of a vertex as known from a `root`.
 #[derive(Debug, Clone, Copy)]
 pub enum VertState {
+    /// No information. Must look at the shared `owner` array to determine.
     Unknown,
+    /// Not owned by `root`. Vertex is owned by another tree.
     NotOwned,
+    /// Owned by `root`, but not yet visited in the traversal.
     OwnedUnused,
+    /// Owned by `root` and visited in the traversal.
     OwnedUsed,
 }
 
@@ -20,6 +25,10 @@ impl VertState {
     }
 }
 
+/// What a particilar root knows about the rest of the graph.
+///
+/// This serves both as a local cache of the values in the shared
+/// `owner` array and as a `used` array.
 pub struct State<'a> {
     root: usize,
     state: Vec<VertState>,
@@ -60,6 +69,6 @@ impl<'a> State<'a> {
 }
 
 pub fn take_ownership(owner: &AtomicUsize, root: usize) -> bool {
-    let current = owner.compare_and_swap(usize::MAX, root, Ordering::SeqCst);
+    let current = owner.compare_and_swap(usize::MAX, root, Ordering::Relaxed);
     current == usize::MAX
 }

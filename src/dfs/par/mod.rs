@@ -1,3 +1,5 @@
+//! Parallel DFS
+
 use rayon::prelude::*;
 
 use graph::{AdjLists as Graph, Edge, Tree};
@@ -8,8 +10,17 @@ use std::usize;
 mod util;
 use self::util::{take_ownership, State};
 
+/// Perform a sequential DFS traversal of the graph and build a forest showing how it was traversed.
 pub fn run(graph: &Graph) -> Vec<Tree> {
-    // can't use `vec![AtomicUsize::new(usize::MAX); graph.num_vertices()]`
+    // Tracks is a given vertex is "owned" by a tree.
+    // If a tree owns the vertex, its value is the id of the root node of the tree.
+    // If the vertex isn't owned, its value is `usize::MAX`.
+    //
+    // When a tree wants to visit a vertex it must take ownership first.
+    // Ownership can be taken only once when the vertex isn't owned (value is `usize::MAX`)
+    // and can't be changed afterwords.
+    //
+    // This is a shared state between all threads and guarantees that each vertex is traversed only once.
     let owner = (0..graph.vertices().count())
         .map(|_| AtomicUsize::new(usize::MAX))
         .collect::<Vec<_>>();
