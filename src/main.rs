@@ -9,6 +9,7 @@ use parallel_dfs::graph::AdjLists as Graph;
 use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
 
+#[allow(dead_code)]
 #[derive(StructOpt)]
 enum Opts {
     /// Generate a random graph
