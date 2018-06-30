@@ -60,8 +60,13 @@ fn main() {
 
     thread_pool.install(|| {
         match opts {
-            Opts::Gen { undirected: true, vertices: _, edges: _, .. } => {
-                unimplemented!()
+            Opts::Gen { undirected: true, vertices, edges, output, .. } => {
+                let graph = Graph::gen_undirected(vertices, edges, None);
+                let forest = dfs::par(&graph);
+
+                if output {
+                    println!("{:#?}", forest);
+                }
             },
             Opts::Gen { undirected: false, vertices, edges, output, .. } => {
                 let graph = Graph::gen_directed(vertices, edges, None);
