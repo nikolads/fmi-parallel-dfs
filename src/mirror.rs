@@ -1,4 +1,4 @@
-use crossbeam::sync::MsQueue;
+use crossbeam::sync::SegQueue;
 use rayon::prelude::*;
 use spin::Mutex as SpinLock;
 
@@ -52,7 +52,7 @@ pub fn spin_lock(lists: &mut Vec<Vec<usize>>) {
 }
 
 pub fn queue(lists: &mut Vec<Vec<usize>>) {
-    let queues = lists.iter().map(|_| MsQueue::new()).collect::<Vec<_>>();
+    let queues = lists.iter().map(|_| SegQueue::new()).collect::<Vec<_>>();
 
     lists
         .par_iter()
@@ -62,9 +62,6 @@ pub fn queue(lists: &mut Vec<Vec<usize>>) {
                 queues[v].push(u);
             }
         });
-
-    // FIXME: for some reason this starts taking huge ammounts of memory
-    // after this point
 
     lists
         .par_iter_mut()
