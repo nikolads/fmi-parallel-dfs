@@ -1,7 +1,5 @@
 extern crate parallel_dfs;
 extern crate rayon;
-
-#[macro_use]
 extern crate structopt;
 
 use parallel_dfs::dfs;

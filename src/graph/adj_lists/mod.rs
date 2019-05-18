@@ -1,15 +1,12 @@
-use rand;
-use rand::distributions::Uniform;
-use rand::prelude::*;
-use rayon;
-use rayon::prelude::*;
-
-use graph::Edge;
-use mirror;
-
+use crate::graph::Edge;
+use crate::mirror;
+use rand::{self, prelude::*};
+use rayon::{self, prelude::*};
 use std::iter;
-use std::mem;
-use std::ops::Range;
+
+mod job;
+
+use self::job::JobDesc;
 
 /// Pseudo-random number generator algorithm used in this module.
 ///
@@ -37,7 +34,6 @@ type Prng = rand::prng::XorShiftRng;
 /// The graph is directed. An undirected graph is represented
 /// by adding an edge in both directions (ie *(u, v)* and *(v, u)*).
 /// Loops (*(u, u)* edges) and multiple edges are not allowed.
-///
 #[derive(Debug, Clone)]
 pub struct AdjLists {
     n_verts: usize,
@@ -55,34 +51,34 @@ impl AdjLists {
 
     /// Create new directed graph with randomly generated edges.
     ///
-    /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated edges.
-    /// The job is automatically parallelized by `rayon`.
+    /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated
+    /// edges. The job is automatically parallelized by `rayon`.
     ///
-    /// `seeds` is an iterator with initial states to use for local random number generators
-    /// if reproducibility is required. If there aren't enough elements in the iterator
-    /// random seeds will be chosen. `None` can be passed to use entirely random seeds.
+    /// `seeds` is an iterator with initial states to use for local random
+    /// number generators if reproducibility is required. If there aren't
+    /// enough elements in the iterator random seeds will be chosen. `None`
+    /// can be passed to use entirely random seeds.
     ///
     /// # Panics
     ///
-    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
-    /// (`n_verts  * (n_verts - 1)`)
-    ///
+    /// If `n_edges` is more than the edges of a full graph with `n_verts`
+    /// vertices, i.e. (`n_verts  * (n_verts - 1)`)
     pub fn gen_directed<I>(n_verts: usize, n_edges: usize, seeds: I) -> Self
     where
         I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
     {
         assert!(n_edges <= n_verts * (n_verts - 1));
 
-        // Number of vertices bellow which we prefer to calculate sequentially instead of
-        // parallelizing across multiple tasks.
+        let mut graph = AdjLists::new(n_verts);
+
+        // Number of vertices bellow which we prefer to calculate sequentially
         // TODO: benchmark to choose an appropriate value
         // TODO: should we parallelize over number of edges instead?
         const VERTS_PER_CHUNK: usize = 128;
 
-        let mut graph = AdjLists::new(n_verts);
-
-        // Calculate the number of seeds that we will need and pre-collect them in a vector.
-        // We need this because we can't share a mutable iterator between threads without locking.
+        // Calculate the number of seeds that we will need and pre-collect them in a
+        // vector. We need this because we can't share a mutable iterator
+        // between threads without locking.
         let seeds = seeds
             .into_iter()
             .map(|s| Some(s))
@@ -90,38 +86,36 @@ impl AdjLists {
             .take(graph.lists.chunks(VERTS_PER_CHUNK).count())
             .collect::<Vec<_>>();
 
-        graph
-            .lists
-            .par_chunks_mut(VERTS_PER_CHUNK)
-            .enumerate()
-            .zip(seeds)
-            .for_each(|((i, lists), seed)| {
-                let mut part = DirectedPart {
-                    from_verts: (i * VERTS_PER_CHUNK)..(i * VERTS_PER_CHUNK + lists.len()),
-                    to_verts: 0..n_verts,
-                    lists,
-                };
-
-                let edges = part.subrange(0..n_edges, n_verts).len();
-                part.gen(edges, seed);
-            });
+        JobDesc {
+            n_verts,
+            n_edges,
+            lists: &mut graph.lists,
+            directed: true,
+        }
+        .chunked(VERTS_PER_CHUNK)
+        .zip(seeds)
+        .for_each(|(mut job, seed)| job.gen(seed));
 
         graph
     }
 
     /// Create new directed graph with randomly generated edges.
     ///
-    /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated edges.
-    /// The job is manually split between `n_threads` threads.
+    /// Creates a graph with `n_verts` vertices and `n_edges` randomly generated
+    /// edges. The job is manually split between `n_threads` threads.
     ///
     /// This exists mostly to benchmark against `gen_directed`.
     ///
     /// # Panics
     ///
-    /// If `n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
-    /// (`n_verts  * (n_verts - 1)`)
-    ///
-    pub fn gen_directed_on_threads<I>(n_verts: usize, n_edges: usize, n_threads: usize, seeds: I) -> Self
+    /// If `n_edges` is more than the edges of a full graph with `n_verts`
+    /// vertices, i.e. (`n_verts  * (n_verts - 1)`)
+    pub fn gen_directed_on_threads<I>(
+        n_verts: usize,
+        n_edges: usize,
+        n_threads: usize,
+        seeds: I,
+    ) -> Self
     where
         I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
         <I as IntoIterator>::IntoIter: Send,
@@ -129,30 +123,18 @@ impl AdjLists {
         assert!(n_edges <= n_verts * (n_verts - 1));
 
         let mut graph = AdjLists::new(n_verts);
-
-        let mut state = &mut graph.lists[..];
-        let mut seeds = seeds.into_iter();
+        let seeds = seeds.into_iter().map(|s| Some(s)).chain(iter::repeat(None));
 
         rayon::scope(|scope| {
-            for i in 0..n_threads {
-                let from_verts = Self::subrange(0..n_verts, i, i + 1, n_threads);
-
-                // `mem::replace` to "trick" the borrow checker
-                let tmp = mem::replace(&mut state, &mut []);
-                let (lists, next) = tmp.split_at_mut(from_verts.end - from_verts.start);
-                state = next;
-
-                let mut part = DirectedPart {
-                    from_verts: from_verts,
-                    to_verts: 0..n_verts,
-                    lists: lists,
-                };
-
-                let edges = Self::subrange(0..n_edges, i, i + 1, n_threads).len();
-                let seed = seeds.next();
-
-                scope.spawn(move |_| part.gen(edges, seed));
+            JobDesc {
+                n_verts,
+                n_edges,
+                lists: &mut graph.lists,
+                directed: true,
             }
+            .threaded(n_threads)
+            .zip(seeds)
+            .for_each(|(mut job, seed)| scope.spawn(move |_| job.gen(seed)));
         });
 
         graph
@@ -160,19 +142,20 @@ impl AdjLists {
 
     /// Create new undirected graph with randomly generated edges.
     ///
-    /// Creates a graph with `n_verts` vertices and a total of `2 * n_edges` edges.
-    /// Edges are created symmetrically, i.e. if *(u, v)* exists then *(v, u)* exists too.
+    /// Creates a graph with `n_verts` vertices and a total of `2 * n_edges`
+    /// edges. Edges are created symmetrically, i.e. if *(u, v)* exists then
+    /// *(v, u)* exists too.
     ///
     /// The job is automatically parallelized by `rayon`.
-    /// `seeds` is an iterator with initial states to use for local random number generators
-    /// if reproducibility is required. If there aren't enough elements in the iterator
-    /// random seeds will be chosen. `None` can be passed to use entirely random seeds.
+    /// `seeds` is an iterator with initial states to use for local random
+    /// number generators if reproducibility is required. If there aren't
+    /// enough elements in the iterator random seeds will be chosen. `None`
+    /// can be passed to use entirely random seeds.
     ///
     /// # Panics
     ///
-    /// If `2 * n_edges` is more than the edges of a full graph with `n_verts` vertices, i.e.
-    /// (`n_verts  * (n_verts - 1)`)
-    ///
+    /// If `2 * n_edges` is more than the edges of a full graph with `n_verts`
+    /// vertices, i.e. (`n_verts  * (n_verts - 1)`)
     pub fn gen_undirected<I>(n_verts: usize, n_edges: usize, seeds: I) -> Self
     where
         I: IntoIterator<Item = <Prng as SeedableRng>::Seed>,
@@ -190,32 +173,29 @@ impl AdjLists {
             .take(graph.lists.chunks(VERTS_PER_CHUNK).count())
             .collect::<Vec<_>>();
 
-        graph
-            .lists
-            .par_chunks_mut(VERTS_PER_CHUNK)
-            .enumerate()
-            .zip(seeds)
-            .for_each(|((i, lists), seed)| {
-                let mut part = UndirectedPart {
-                    from_verts: (i * VERTS_PER_CHUNK)..(i * VERTS_PER_CHUNK + lists.len()),
-                    to_verts: 0..(i * VERTS_PER_CHUNK + lists.len()),
-                    lists,
-                };
-
-                let edges = part.subrange(0..n_edges, n_verts).len();
-                part.gen(edges, seed);
-            });
+        JobDesc {
+            n_verts,
+            n_edges,
+            lists: &mut graph.lists,
+            directed: false,
+        }
+        .chunked(VERTS_PER_CHUNK)
+        .zip(seeds)
+        .for_each(|(mut job, seed)| job.gen(seed));
 
         mirror::seq(&mut graph.lists);
 
         graph
     }
 
-    /// Sort the graph, so that edges come in order for `edges` and `neighbours`.
+    /// Sort the graph, so that edges come in order for `edges` and
+    /// `neighbours`.
     ///
     /// Uses `rayon` for pararellism.
     pub fn sort(&mut self) {
-        self.lists.par_iter_mut().for_each(|list| list.sort_unstable())
+        self.lists
+            .par_iter_mut()
+            .for_each(|list| list.sort_unstable())
     }
 
     /// Iterator over all vertices in the graph.
@@ -237,105 +217,13 @@ impl AdjLists {
 
     /// Iterator over the neighbours of vertex `v`.
     ///
-    /// The neighbours are all vertices `u` such that an edge from `v` to `u` exists.
-    pub fn neighbours<'a>(&'a self, v: usize) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
+    /// The neighbours are all vertices `u` such that an edge from `v` to `u`
+    /// exists.
+    pub fn neighbours<'a>(
+        &'a self,
+        v: usize,
+    ) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
         self.lists[v].iter().cloned()
-    }
-
-    fn subrange(range: Range<usize>, from: usize, to: usize, total: usize) -> Range<usize> {
-        let from = from as f32 / total as f32;
-        let to = to as f32 / total as f32;
-
-        Range {
-            start: (range.start as f32 + from * range.len() as f32).floor() as usize,
-            end: (range.start as f32 + to * range.len() as f32).floor() as usize,
-        }
-    }
-}
-
-struct DirectedPart<'a> {
-    from_verts: Range<usize>,
-    to_verts: Range<usize>,
-    lists: &'a mut [Vec<usize>],
-}
-
-impl<'a> DirectedPart<'a> {
-    fn gen(&mut self, n_edges: usize, seed: Option<<Prng as SeedableRng>::Seed>) {
-        let mut added = 0;
-        let mut rng = match seed {
-            Some(seed) => Prng::from_seed(seed),
-            None => Prng::from_entropy(),
-        };
-
-        let from_range = Uniform::new(self.from_verts.start, self.from_verts.end);
-        let to_range = Uniform::new(self.to_verts.start, self.to_verts.end);
-
-        while added < n_edges {
-            let from = from_range.sample(&mut rng);
-            let to = to_range.sample(&mut rng);
-
-            if from != to && self.list_at(from).iter().find(|&&e| e == to).is_none() {
-                self.list_at(from).push(to);
-                added += 1;
-            }
-        }
-    }
-
-    fn subrange(&self, range: Range<usize>, total: usize) -> Range<usize> {
-        let from = self.from_verts.start as f32 / total as f32;
-        let to = self.from_verts.end as f32 / total as f32;
-
-        Range {
-            start: (range.start as f32 + from * range.len() as f32).floor() as usize,
-            end: (range.start as f32 + to * range.len() as f32).floor() as usize,
-        }
-    }
-
-    fn list_at(&mut self, v: usize) -> &mut Vec<usize> {
-        &mut self.lists[v - self.from_verts.start]
-    }
-}
-
-struct UndirectedPart<'a> {
-    from_verts: Range<usize>,
-    to_verts: Range<usize>,
-    lists: &'a mut [Vec<usize>]
-}
-
-impl<'a> UndirectedPart<'a> {
-    fn gen(&mut self, n_edges: usize, seed: Option<<Prng as SeedableRng>::Seed>) {
-        let mut added = 0;
-        let mut rng = match seed {
-            Some(seed) => Prng::from_seed(seed),
-            None => Prng::from_entropy(),
-        };
-
-        let from_range = Uniform::new(self.from_verts.start, self.from_verts.end);
-        let to_range = Uniform::new(self.to_verts.start, self.to_verts.end);
-
-        while added < n_edges {
-            let from = from_range.sample(&mut rng);
-            let to = to_range.sample(&mut rng);
-
-            if from > to && self.list_at(from).iter().find(|&&e| e == to).is_none() {
-                self.list_at(from).push(to);
-                added += 1;
-            }
-        }
-    }
-
-    fn subrange(&self, range: Range<usize>, total: usize) -> Range<usize> {
-        let from = self.from_verts.start as f32 / total as f32;
-        let to = self.from_verts.end as f32 / total as f32;
-
-        Range {
-            start: (range.start as f32 + from * from * range.len() as f32).floor() as usize,
-            end: (range.start as f32 + to * to * range.len() as f32).floor() as usize,
-        }
-    }
-
-    fn list_at(&mut self, v: usize) -> &mut Vec<usize> {
-        &mut self.lists[v - self.from_verts.start]
     }
 }
 

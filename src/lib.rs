@@ -1,5 +1,3 @@
-#![feature(nll)]
-
 extern crate crossbeam;
 extern crate rand;
 extern crate rayon;
