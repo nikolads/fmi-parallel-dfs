@@ -3,7 +3,7 @@ extern crate rayon;
 extern crate structopt;
 
 use parallel_dfs::dfs;
-use parallel_dfs::graph::AdjLists as Graph;
+use parallel_dfs::graph::{AdjLists, AdjMatrix};
 use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
 
@@ -58,20 +58,25 @@ fn main() {
 
     thread_pool.install(|| {
         match opts {
-            Opts::Gen { undirected: true, vertices, edges, output, .. } => {
-                let graph = Graph::gen_undirected(vertices, edges, None);
-                let forest = dfs::par(&graph);
+            Opts::Gen { undirected: true, vertices, edges, output, threads, .. } => {
+                let graph = AdjLists::gen_undirected(vertices, edges, None);
+                // let forest = dfs::par(&graph);
 
-                if output {
-                    println!("{:#?}", forest);
-                }
+                // if output {
+                //     println!("{:#?}", forest);
+                // }
             },
             Opts::Gen { undirected: false, vertices, edges, output, .. } => {
-                let graph = Graph::gen_directed(vertices, edges, None);
-                let forest = dfs::par(&graph);
+                let graph = AdjMatrix::gen_directed(vertices, edges, None);
+                let forest = dfs::par_matrix(&graph);
+
+                // let graph = AdjLists::gen_directed(vertices, edges, None);
+                // let forest = dfs::par(&graph);
+                // let forest = dfs::seq(&graph);
 
                 if output {
                     println!("{:#?}", forest);
+                    // println!("{:#?}", forest.iter().map(|tree| tree.edges.len()).collect::<Vec<_>>());
                 }
             },
             Opts::Load { .. } => {

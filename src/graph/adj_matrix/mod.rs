@@ -1,46 +1,27 @@
+use rand::distributions::Uniform;
 use rand::prelude::*;
 use rayon::{self, prelude::*};
 use std::iter;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::graph::{Edge, Prng};
-use crate::mirror;
 
-mod job;
-
-use self::job::JobDesc;
-
-/// Simple graph represented using adjacency lists.
-///
-/// Vertices are represented with integer ids in `0..n_verts`.
-/// An edge *(u, v)* from `u` to `v` is represented by storing `v`
-/// in the vector `lists[u]`.
-///
-/// For example the graph with vertices {0, 1, 2} and edges
-/// {(0, 1), (0, 2), (1, 2)} is represented by
-///
-/// ```ignore
-/// lists = [
-///     [1, 2], // index 0: edges (0, 1) and (0, 2)
-///     [2],    // index 1: edges (1, 2)
-///     [],     // index 2: no edges
-/// ]
-/// ```
-///
-/// The graph is directed. An undirected graph is represented
-/// by adding an edge in both directions (ie *(u, v)* and *(v, u)*).
-/// Loops (*(u, u)* edges) and multiple edges are not allowed.
-#[derive(Debug, Clone)]
-pub struct AdjLists {
+#[derive(Debug)]
+pub struct AdjMatrix {
     n_verts: usize,
-    lists: Vec<Vec<usize>>,
+    data: Box<[AtomicBool]>,
 }
 
-impl AdjLists {
+///
+impl AdjMatrix {
     /// Create new empty graph
     pub fn new(n_verts: usize) -> Self {
-        AdjLists {
+        let mut data = Vec::new();
+        data.resize_with(n_verts * n_verts, || AtomicBool::new(false));
+
+        Self {
             n_verts,
-            lists: vec![vec![]; n_verts],
+            data: data.into_boxed_slice(),
         }
     }
 
@@ -64,12 +45,10 @@ impl AdjLists {
     {
         assert!(n_edges <= n_verts * (n_verts - 1));
 
-        let mut graph = AdjLists::new(n_verts);
+        let graph = Self::new(n_verts);
+        const EDGES_PER_CHUNK: usize = 128;
 
-        // Number of vertices bellow which we prefer to calculate sequentially
-        // TODO: benchmark to choose an appropriate value
-        // TODO: should we parallelize over number of edges instead?
-        const VERTS_PER_CHUNK: usize = 128;
+        let chunks = (0..n_edges).step_by(EDGES_PER_CHUNK).count();
 
         // Calculate the number of seeds that we will need and pre-collect them in a
         // vector. We need this because we can't share a mutable iterator
@@ -78,18 +57,40 @@ impl AdjLists {
             .into_iter()
             .map(|s| Some(s))
             .chain(iter::repeat(None))
-            .take(graph.lists.chunks(VERTS_PER_CHUNK).count())
+            .take(chunks)
             .collect::<Vec<_>>();
 
-        JobDesc {
-            n_verts,
-            n_edges,
-            lists: &mut graph.lists,
-            directed: true,
-        }
-        .chunked(VERTS_PER_CHUNK)
-        .zip(seeds)
-        .for_each(|(mut job, seed)| job.gen(seed));
+        seeds.into_par_iter().enumerate().for_each(|(i, seed)| {
+            let edges_to_gen = if i < chunks - 1 {
+                EDGES_PER_CHUNK
+            } else {
+                n_edges % EDGES_PER_CHUNK
+            };
+
+            let mut added = 0;
+            let mut rng = match seed {
+                Some(seed) => Prng::from_seed(seed),
+                None => Prng::from_entropy(),
+            };
+
+            let range = Uniform::new(0, n_verts);
+
+            while added < edges_to_gen {
+                let from = range.sample(&mut rng);
+                let to = range.sample(&mut rng);
+
+                if graph.should_add(from, to) {
+                    if graph.data[graph.index(from, to)].compare_and_swap(
+                        false,
+                        true,
+                        Ordering::Relaxed,
+                    ) == false
+                    {
+                        added += 1;
+                    }
+                }
+            }
+        });
 
         graph
     }
@@ -117,19 +118,51 @@ impl AdjLists {
     {
         assert!(n_edges <= n_verts * (n_verts - 1));
 
-        let mut graph = AdjLists::new(n_verts);
+        let graph = Self::new(n_verts);
         let seeds = seeds.into_iter().map(|s| Some(s)).chain(iter::repeat(None));
 
+        let edges_per_thread = if n_edges % n_threads == 0 {
+            n_edges / n_threads
+        } else {
+            n_edges / n_threads + 1
+        };
+
         rayon::scope(|scope| {
-            JobDesc {
-                n_verts,
-                n_edges,
-                lists: &mut graph.lists,
-                directed: true,
-            }
-            .threaded(n_threads)
-            .zip(seeds)
-            .for_each(|(mut job, seed)| scope.spawn(move |_| job.gen(seed)));
+            (0..n_threads).zip(seeds).for_each(|(t, seed)| {
+                let graph = &graph;
+
+                scope.spawn(move |_| {
+                    let edges_to_gen = if t < n_threads - 1 || n_edges % n_threads == 0 {
+                        edges_per_thread
+                    } else {
+                        n_edges % edges_per_thread
+                    };
+
+                    let mut added = 0;
+                    let mut rng = match seed {
+                        Some(seed) => Prng::from_seed(seed),
+                        None => Prng::from_entropy(),
+                    };
+
+                    let range = Uniform::new(0, n_verts);
+
+                    while added < edges_to_gen {
+                        let from = range.sample(&mut rng);
+                        let to = range.sample(&mut rng);
+
+                        if graph.should_add(from, to) {
+                            if graph.data[graph.index(from, to)].compare_and_swap(
+                                false,
+                                true,
+                                Ordering::Relaxed,
+                            ) == false
+                            {
+                                added += 1;
+                            }
+                        }
+                    }
+                });
+            });
         });
 
         graph
@@ -157,40 +190,15 @@ impl AdjLists {
     {
         assert!(n_edges <= n_verts * (n_verts - 1) / 2);
 
-        const VERTS_PER_CHUNK: usize = 128;
-
-        let mut graph = AdjLists::new(n_verts);
-
-        let seeds = seeds
-            .into_iter()
-            .map(|s| Some(s))
-            .chain(iter::repeat(None))
-            .take(graph.lists.chunks(VERTS_PER_CHUNK).count())
-            .collect::<Vec<_>>();
-
-        JobDesc {
-            n_verts,
-            n_edges,
-            lists: &mut graph.lists,
-            directed: false,
-        }
-        .chunked(VERTS_PER_CHUNK)
-        .zip(seeds)
-        .for_each(|(mut job, seed)| job.gen(seed));
-
-        mirror::seq(&mut graph.lists);
-
-        graph
+        unimplemented!()
     }
 
-    /// Sort the graph, so that edges come in order for `edges` and
-    /// `neighbours`.
-    ///
-    /// Uses `rayon` for pararellism.
-    pub fn sort(&mut self) {
-        self.lists
-            .par_iter_mut()
-            .for_each(|list| list.sort_unstable())
+    fn should_add(&self, from: usize, to: usize) -> bool {
+        from != to && self.data[self.index(from, to)].load(Ordering::Relaxed) == false
+    }
+
+    fn index(&self, row: usize, col: usize) -> usize {
+        row * self.n_verts + col
     }
 
     /// Iterator over all vertices in the graph.
@@ -218,9 +226,15 @@ impl AdjLists {
         &'a self,
         v: usize,
     ) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
-        self.lists[v].iter().cloned()
+        let start = v * self.n_verts;
+        let end = (v + 1) * self.n_verts;
+        let row = &self.data[start..end];
+
+        row.iter()
+            .enumerate()
+            .filter_map(|(i, x)| match x.load(Ordering::Relaxed) {
+                true => Some(i),
+                false => None,
+            })
     }
 }
-
-#[cfg(test)]
-mod tests;

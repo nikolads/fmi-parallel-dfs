@@ -1,6 +1,6 @@
 use rayon::ThreadPoolBuilder;
 
-use dfs;
+use crate::dfs;
 use super::*;
 
 #[test]
