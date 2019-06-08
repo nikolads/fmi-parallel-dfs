@@ -33,7 +33,7 @@ impl<'a> BitSlice<'a> {
                     rest: (&[]).iter(),
                 }
             },
-            len => {
+            _ => {
                 let (head, tail) = self.storage.split_first().unwrap();
                 let (last, mid) = tail.split_last().unwrap();
 

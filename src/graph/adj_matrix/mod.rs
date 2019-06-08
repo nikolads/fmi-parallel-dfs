@@ -176,7 +176,50 @@ impl AdjMatrix {
     {
         assert!(n_edges <= n_verts * (n_verts - 1) / 2);
 
-        unimplemented!()
+        let graph = Self::new(n_verts);
+        const EDGES_PER_CHUNK: usize = 128;
+
+        let chunks = (0..n_edges).step_by(EDGES_PER_CHUNK).count();
+
+        // Calculate the number of seeds that we will need and pre-collect them in a
+        // vector. We need this because we can't share a mutable iterator
+        // between threads without locking.
+        let seeds = seeds
+            .into_iter()
+            .map(|s| Some(s))
+            .chain(iter::repeat(None))
+            .take(chunks)
+            .collect::<Vec<_>>();
+
+        seeds.into_par_iter().enumerate().for_each(|(i, seed)| {
+            let edges_to_gen = if i < chunks - 1 {
+                EDGES_PER_CHUNK
+            } else {
+                n_edges % EDGES_PER_CHUNK
+            };
+
+            let mut added = 0;
+            let mut rng = match seed {
+                Some(seed) => Prng::from_seed(seed),
+                None => Prng::from_entropy(),
+            };
+
+            let range = Uniform::new(0, n_verts);
+
+            while added < edges_to_gen {
+                let from = range.sample(&mut rng);
+                let to = range.sample(&mut rng);
+
+                if from < to && graph.should_add(from, to) {
+                    if graph.data.swap(graph.index(from, to), true) == false {
+                        graph.data.set(graph.index(to, from), true);
+                        added += 1;
+                    }
+                }
+            }
+        });
+
+        graph
     }
 
     fn should_add(&self, from: usize, to: usize) -> bool {
