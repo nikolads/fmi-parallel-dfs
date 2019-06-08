@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use crate::graph::{AdjMatrix, Edge, Tree};
 
 pub fn run(graph: &AdjMatrix) -> Vec<Tree> {
+    let run_start = std::time::Instant::now();
+
     const NOT_VISITED: u32 = u32::max_value();
 
     let n_verts = graph.vertices().count();
@@ -14,18 +16,28 @@ pub fn run(graph: &AdjMatrix) -> Vec<Tree> {
 
     let mut backtrack_start_index = 0;
 
+    let res =
     graph
         .vertices()
         .filter(|&root| owner[root].load(Ordering::Relaxed) == NOT_VISITED)
         .map(|root| {
             assert!(take(&owner[root], backtrack_start_index as u32));
 
+            let start = std::time::Instant::now();
+
             let (mut descend_tree, mut backtrack_stack) = descend(graph, &owner, root as u32, backtrack_start_index);
+
+            let after_descend = std::time::Instant::now();
+            println!("descend: {:?}", after_descend.duration_since(start));
+            println!("descend_depth: {}", backtrack_stack.len());
 
             backtrack_stack.pop();
             backtrack_start_index += 1;
 
             let mut backtrack = backtrack(graph, &owner, &backtrack_stack, backtrack_start_index);
+
+            let after_backtrack = std::time::Instant::now();
+            println!("backtrack: {:?}", after_backtrack.duration_since(after_descend));
 
             backtrack
                 .par_iter_mut()
@@ -34,15 +46,23 @@ pub fn run(graph: &AdjMatrix) -> Vec<Tree> {
                         .retain(|edge| owner[edge.to].load(Ordering::Relaxed) == *backtrack_index)
                 });
 
+            let after_retain = std::time::Instant::now();
+            println!("retain: {:?}", after_retain.duration_since(after_backtrack));
+
             backtrack.into_iter().for_each(|(_, tree)| {
                 descend_tree.edges.extend(tree.edges);
             });
 
+            let after_extend = std::time::Instant::now();
+            println!("extend: {:?}", after_extend.duration_since(after_retain));
 
             backtrack_start_index += backtrack_stack.len();
             descend_tree
         })
-        .collect()
+        .collect();
+
+    println!("run: {:?}", std::time::Instant::now().duration_since(run_start));
+    res
 }
 
 fn take(owner: &AtomicU32, new: u32) -> bool {

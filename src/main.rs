@@ -6,6 +6,24 @@ use parallel_dfs::dfs;
 use parallel_dfs::graph::{AdjLists, AdjMatrix};
 use rayon::ThreadPoolBuilder;
 use structopt::StructOpt;
+use std::str::FromStr;
+
+enum Algorithm {
+    Seq,
+    ParMatrix
+}
+
+impl FromStr for Algorithm {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "seq" => Ok(Algorithm::Seq),
+            "par_mat" => Ok(Algorithm::ParMatrix),
+            _ => Err("".to_string())
+        }
+    }
+}
 
 #[allow(dead_code)]
 #[derive(StructOpt)]
@@ -25,6 +43,8 @@ enum Opts {
         /// Number of threads to use. Defaults to number of logical CPUs.
         #[structopt(short = "t", long = "threads")]
         threads: Option<usize>,
+        #[structopt(long = "algo")]
+        algorithm: Option<Algorithm>,
         /// Whether to write the result to stdout.
         #[structopt(long = "output")]
         output: bool,
@@ -66,18 +86,33 @@ fn main() {
                 //     println!("{:#?}", forest);
                 // }
             },
-            Opts::Gen { undirected: false, vertices, edges, output, .. } => {
-                let graph = AdjMatrix::gen_directed(vertices, edges, None);
-                let forest = dfs::par_matrix(&graph);
+            Opts::Gen { undirected: false, vertices, edges, output, algorithm, .. } => {
+                let start;
 
-                // let graph = AdjLists::gen_directed(vertices, edges, None);
-                // let forest = dfs::par(&graph);
-                // let forest = dfs::seq(&graph);
+                let forest = match algorithm.unwrap_or(Algorithm::ParMatrix) {
+                    Algorithm::Seq => {
+                        let graph = AdjLists::gen_directed(vertices, edges, None);
+                        start = std::time::Instant::now();
+                        dfs::seq(&graph)
+                    }
+                    Algorithm::ParMatrix => {
+                        let before_gen = std::time::Instant::now();
+
+                        let graph = AdjMatrix::gen_directed(vertices, edges, None);
+
+                        start = std::time::Instant::now();
+                        println!("matrix gen: {:?}", start.duration_since(before_gen));
+
+                        dfs::par_matrix(&graph)
+                    }
+                };
 
                 if output {
                     println!("{:#?}", forest);
                     // println!("{:#?}", forest.iter().map(|tree| tree.edges.len()).collect::<Vec<_>>());
                 }
+
+                println!("Total run time: {:?}", std::time::Instant::now().duration_since(start));
             },
             Opts::Load { .. } => {
                 unimplemented!()

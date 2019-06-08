@@ -2,7 +2,7 @@
 
 use rayon::prelude::*;
 
-use graph::{AdjLists as Graph, Edge, Tree};
+use crate::graph::{AdjLists as Graph, Edge, Tree};
 
 use std::sync::atomic::AtomicUsize;
 use std::usize;

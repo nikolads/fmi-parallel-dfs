@@ -1,4 +1,4 @@
-use graph::Edge;
+use crate::graph::Edge;
 
 /// Simple tree representation.
 ///

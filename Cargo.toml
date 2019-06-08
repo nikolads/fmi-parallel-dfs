@@ -2,6 +2,7 @@
 authors = ["Nikola Stoyanov <ns.barzakov@gmail.com>"]
 name = "parallel-dfs"
 version = "0.1.0"
+edition = "2018"
 
 [dependencies]
 crossbeam = "0.3.2"

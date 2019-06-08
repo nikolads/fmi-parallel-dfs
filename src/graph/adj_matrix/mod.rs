@@ -2,26 +2,22 @@ use rand::distributions::Uniform;
 use rand::prelude::*;
 use rayon::{self, prelude::*};
 use std::iter;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::graph::{Edge, Prng};
+use crate::utils::BitVec;
 
 #[derive(Debug)]
 pub struct AdjMatrix {
     n_verts: usize,
-    data: Box<[AtomicBool]>,
+    data: BitVec,
 }
 
-///
 impl AdjMatrix {
     /// Create new empty graph
     pub fn new(n_verts: usize) -> Self {
-        let mut data = Vec::new();
-        data.resize_with(n_verts * n_verts, || AtomicBool::new(false));
-
         Self {
             n_verts,
-            data: data.into_boxed_slice(),
+            data: BitVec::new(n_verts * n_verts),
         }
     }
 
@@ -80,12 +76,7 @@ impl AdjMatrix {
                 let to = range.sample(&mut rng);
 
                 if graph.should_add(from, to) {
-                    if graph.data[graph.index(from, to)].compare_and_swap(
-                        false,
-                        true,
-                        Ordering::Relaxed,
-                    ) == false
-                    {
+                    if graph.data.swap(graph.index(from, to), true) == false {
                         added += 1;
                     }
                 }
@@ -151,12 +142,7 @@ impl AdjMatrix {
                         let to = range.sample(&mut rng);
 
                         if graph.should_add(from, to) {
-                            if graph.data[graph.index(from, to)].compare_and_swap(
-                                false,
-                                true,
-                                Ordering::Relaxed,
-                            ) == false
-                            {
+                            if graph.data.swap(graph.index(from, to), true) == false {
                                 added += 1;
                             }
                         }
@@ -194,7 +180,11 @@ impl AdjMatrix {
     }
 
     fn should_add(&self, from: usize, to: usize) -> bool {
-        from != to && self.data[self.index(from, to)].load(Ordering::Relaxed) == false
+        from != to &&
+            self.data
+                .get(self.index(from, to))
+                .unwrap_or_else(|| panic!("bug: index {} is outside tree", self.index(from, to))) ==
+                false
     }
 
     fn index(&self, row: usize, col: usize) -> usize {
@@ -228,13 +218,6 @@ impl AdjMatrix {
     ) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
         let start = v * self.n_verts;
         let end = (v + 1) * self.n_verts;
-        let row = &self.data[start..end];
-
-        row.iter()
-            .enumerate()
-            .filter_map(|(i, x)| match x.load(Ordering::Relaxed) {
-                true => Some(i),
-                false => None,
-            })
+        self.data.slice(start..end).ones()
     }
 }
