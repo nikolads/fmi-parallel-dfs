@@ -1,15 +1,12 @@
-// use rayon::ThreadPoolBuilder;
-
 use rayon::ThreadPoolBuilder;
 
 use crate::dfs;
-use crate::graph::AdjMatrix;
-use super::*;
+use crate::graph::AdjLists;
 
 #[test]
 fn visits_all() {
-    let graph = AdjMatrix::gen_directed(100, 1000, None);
-    let forest = run(&graph);
+    let graph = AdjLists::gen_directed(100, 1000, None);
+    let forest = dfs::cheat(&graph);
 
     let mut visited = vec![0; graph.vertices().count()];
 
@@ -34,9 +31,9 @@ fn matches_seq() {
         .unwrap();
 
     thread_pool.install(|| {
-        let graph = AdjMatrix::gen_directed(100, 1000, None);
+        let graph = AdjLists::gen_directed(100, 1000, None);
         let mut answer = dfs::seq(&graph);
-        let mut forest = dfs::par(&graph);
+        let mut forest = dfs::cheat(&graph);
 
         answer.sort_unstable_by_key(|tree| tree.root);
         forest.sort_unstable_by_key(|tree| tree.root);

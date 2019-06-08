@@ -103,7 +103,7 @@ impl<'a> BitSlice<'a> {
         let b = index % B_BITS;
         self.storage
             .get(w)
-            .map(|block| (block.load(Ordering::Acquire) & (1 << b)) != 0)
+            .map(|block| (block.load(Ordering::SeqCst) & (1 << b)) != 0)
     }
 
     pub fn set(&self, index: usize, val: bool) {
@@ -121,8 +121,8 @@ impl<'a> BitSlice<'a> {
         let flag = 1 << b;
 
         match val {
-            true => self.storage[w].fetch_or(flag, Ordering::Release),
-            false => self.storage[w].fetch_and(!flag, Ordering::Release),
+            true => self.storage[w].fetch_or(flag, Ordering::SeqCst),
+            false => self.storage[w].fetch_and(!flag, Ordering::SeqCst),
         };
     }
 
@@ -141,8 +141,8 @@ impl<'a> BitSlice<'a> {
         let flag = 1 << b;
 
         let old = match val {
-            true => self.storage[w].fetch_or(flag, Ordering::AcqRel),
-            false => self.storage[w].fetch_and(!flag, Ordering::AcqRel),
+            true => self.storage[w].fetch_or(flag, Ordering::SeqCst),
+            false => self.storage[w].fetch_and(!flag, Ordering::SeqCst),
         };
 
         old & flag != 0

@@ -1,9 +1,10 @@
 //! Sequential DFS
 
-use crate::graph::{AdjLists as Graph, Edge, Tree};
+use crate::graph::{Edge, GraphRef, Tree};
 
-/// Perform a sequential DFS traversal of the graph and build a forest showing how it was traversed.
-pub fn run(graph: &Graph) -> Vec<Tree> {
+/// Perform a sequential DFS traversal of the graph and build a forest showing
+/// how it was traversed.
+pub fn run<'a, G: GraphRef<'a> + Copy>(graph: G) -> Vec<Tree> {
     let mut result = Vec::new();
     let mut used = vec![false; graph.vertices().count()];
     let mut stack = Vec::new();

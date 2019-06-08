@@ -2,10 +2,10 @@ use rand::prelude::*;
 use rayon::{self, prelude::*};
 use std::iter;
 
-use crate::graph::{Edge, Prng};
-use crate::mirror;
+use crate::graph::{Edge, GraphRef, Prng};
 
 mod job;
+pub mod mirror;
 
 use self::job::JobDesc;
 
@@ -194,12 +194,12 @@ impl AdjLists {
     }
 
     /// Iterator over all vertices in the graph.
-    pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
+    pub fn vertices(&self) -> std::ops::Range<usize> {
         0..self.n_verts
     }
 
     /// Rayon parallel iterator over all vertices in the graph.
-    pub fn vertices_par<'a>(&'a self) -> impl ParallelIterator<Item = usize> + 'a {
+    pub fn vertices_par(&self) -> rayon::range::Iter<usize> {
         (0..self.n_verts).into_par_iter()
     }
 
@@ -214,11 +214,26 @@ impl AdjLists {
     ///
     /// The neighbours are all vertices `u` such that an edge from `v` to `u`
     /// exists.
-    pub fn neighbours<'a>(
-        &'a self,
-        v: usize,
-    ) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
+    pub fn neighbours<'a>(&'a self, v: usize) -> std::iter::Cloned<std::slice::Iter<'a, usize>> {
         self.lists[v].iter().cloned()
+    }
+}
+
+impl<'a> GraphRef<'a> for &'a AdjLists {
+    type Vertices = std::ops::Range<usize>;
+    type VerticesPar = rayon::range::Iter<usize>;
+    type Neighbours = std::iter::Cloned<std::slice::Iter<'a, usize>>;
+
+    fn vertices(self) -> Self::Vertices {
+        self.vertices()
+    }
+
+    fn vertices_par(self) -> Self::VerticesPar {
+        self.vertices_par()
+    }
+
+    fn neighbours(self, v: usize) -> Self::Neighbours {
+        self.neighbours(v)
     }
 }
 

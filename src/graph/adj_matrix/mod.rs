@@ -3,7 +3,7 @@ use rand::prelude::*;
 use rayon::{self, prelude::*};
 use std::iter;
 
-use crate::graph::{Edge, Prng};
+use crate::graph::{Edge, GraphRef, Prng};
 use crate::utils::BitVec;
 
 #[derive(Debug)]
@@ -192,12 +192,12 @@ impl AdjMatrix {
     }
 
     /// Iterator over all vertices in the graph.
-    pub fn vertices<'a>(&'a self) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
+    pub fn vertices(&self) -> std::ops::Range<usize> {
         0..self.n_verts
     }
 
     /// Rayon parallel iterator over all vertices in the graph.
-    pub fn vertices_par<'a>(&'a self) -> impl ParallelIterator<Item = usize> + 'a {
+    pub fn vertices_par(&self) -> rayon::range::Iter<usize> {
         (0..self.n_verts).into_par_iter()
     }
 
@@ -212,12 +212,27 @@ impl AdjMatrix {
     ///
     /// The neighbours are all vertices `u` such that an edge from `v` to `u`
     /// exists.
-    pub fn neighbours<'a>(
-        &'a self,
-        v: usize,
-    ) -> impl Iterator<Item = usize> + DoubleEndedIterator + 'a {
+    pub fn neighbours<'a>(&'a self, v: usize) -> crate::utils::bit_vec::Ones<'a> {
         let start = v * self.n_verts;
         let end = (v + 1) * self.n_verts;
         self.data.slice(start..end).ones()
+    }
+}
+
+impl<'a> GraphRef<'a> for &'a AdjMatrix {
+    type Vertices = std::ops::Range<usize>;
+    type VerticesPar = rayon::range::Iter<usize>;
+    type Neighbours = crate::utils::bit_vec::Ones<'a>;
+
+    fn vertices(self) -> Self::Vertices {
+        self.vertices()
+    }
+
+    fn vertices_par(self) -> Self::VerticesPar {
+        self.vertices_par()
+    }
+
+    fn neighbours(self, v: usize) -> Self::Neighbours {
+        self.neighbours(v)
     }
 }

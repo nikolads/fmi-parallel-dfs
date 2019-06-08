@@ -16,7 +16,7 @@ impl<'a> BitSlice<'a> {
                 },
             },
             1 => {
-                let mut head = self.storage.get(0).unwrap().load(Ordering::Relaxed);
+                let mut head = self.storage.get(0).unwrap().load(Ordering::SeqCst);
 
                 let mask = !((1 << self.start_offset) - 1);
                 head &= mask;
@@ -43,7 +43,7 @@ impl<'a> BitSlice<'a> {
                 let (head, tail) = match self.storage.split_first() {
                     Some((head, tail)) => {
                         let mask = !((1 << self.start_offset) - 1);
-                        (head.load(Ordering::Relaxed) & mask, tail)
+                        (head.load(Ordering::SeqCst) & mask, tail)
                     },
                     None => (0, &[][..]),
                 };
@@ -86,7 +86,7 @@ impl<'a> Iterator for Blocks<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         self.slice
             .next()
-            .map(|block| block.load(Ordering::Relaxed))
+            .map(|block| block.load(Ordering::SeqCst))
             .or_else(|| {
                 self.last.take().map(|block| {
                     let mask = if self.mask_last_n == 0 {
@@ -94,7 +94,7 @@ impl<'a> Iterator for Blocks<'a> {
                     } else {
                         (1 << (B_BITS - self.mask_last_n)) - 1
                     };
-                    block.load(Ordering::Relaxed) & mask
+                    block.load(Ordering::SeqCst) & mask
                 })
             })
     }

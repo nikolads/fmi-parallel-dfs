@@ -1,6 +1,8 @@
-mod adj_lists;
-mod adj_matrix;
-mod tree;
+use rayon::iter::ParallelIterator;
+
+pub mod adj_lists;
+pub mod adj_matrix;
+pub mod tree;
 
 pub use self::adj_lists::AdjLists;
 pub use self::adj_matrix::AdjMatrix;
@@ -25,3 +27,12 @@ impl Edge {
     }
 }
 
+pub trait GraphRef<'a> {
+    type Vertices: Iterator<Item = usize> + DoubleEndedIterator + 'a;
+    type VerticesPar: ParallelIterator<Item = usize> + 'a;
+    type Neighbours: Iterator<Item = usize> + DoubleEndedIterator + 'a;
+
+    fn vertices(self) -> Self::Vertices;
+    fn vertices_par(self) -> Self::VerticesPar;
+    fn neighbours(self, v: usize) -> Self::Neighbours;
+}

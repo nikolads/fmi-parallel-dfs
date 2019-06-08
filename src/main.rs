@@ -1,7 +1,3 @@
-extern crate parallel_dfs;
-extern crate rayon;
-extern crate structopt;
-
 use parallel_dfs::dfs;
 use parallel_dfs::graph::{AdjLists, AdjMatrix};
 use rayon::ThreadPoolBuilder;
@@ -9,8 +5,12 @@ use structopt::StructOpt;
 use std::str::FromStr;
 
 enum Algorithm {
-    Seq,
-    ParMatrix
+    SeqList,
+    ParList,
+    CheatList,
+    SeqMatrix,
+    ParMatrix,
+    CheatMatrix,
 }
 
 impl FromStr for Algorithm {
@@ -18,9 +18,13 @@ impl FromStr for Algorithm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "seq" => Ok(Algorithm::Seq),
+            "seq_list" => Ok(Algorithm::SeqList),
+            "par_list" => Ok(Algorithm::ParList),
+            "cheat_list" => Ok(Algorithm::CheatList),
+            "seq_mat" => Ok(Algorithm::SeqMatrix),
             "par_mat" => Ok(Algorithm::ParMatrix),
-            _ => Err("".to_string())
+            "cheat_mat" => Ok(Algorithm::CheatMatrix),
+            _ => Err(format!("unknown algorithm {:?}", s))
         }
     }
 }
@@ -31,9 +35,6 @@ enum Opts {
     /// Generate a random graph
     #[structopt(name = "gen")]
     Gen {
-        /// Generate indirected graph. Defaults to directed.
-        #[structopt(long = "undirected")]
-        undirected: bool,
         /// Number of vertices to generate.
         #[structopt(short = "n", long = "vertices")]
         vertices: usize,
@@ -43,21 +44,12 @@ enum Opts {
         /// Number of threads to use. Defaults to number of logical CPUs.
         #[structopt(short = "t", long = "threads")]
         threads: Option<usize>,
+        /// Which algorithm to use.
         #[structopt(long = "algo")]
         algorithm: Option<Algorithm>,
-        /// Whether to write the result to stdout.
-        #[structopt(long = "output")]
-        output: bool,
-    },
-    /// Load graph from file
-    #[structopt(name = "load")]
-    Load {
-        /// File to load.
-        #[structopt(short = "f", long = "file")]
-        file: String,
-        /// Number of threads to use. Defaults to number of logical CPUs.
-        #[structopt(short = "t", long = "threads")]
-        threads: Option<usize>,
+        /// Generate undirected graph. Defaults to directed.
+        #[structopt(long = "undirected")]
+        undirected: bool,
         /// Whether to write the result to stdout.
         #[structopt(long = "output")]
         output: bool,
@@ -67,8 +59,10 @@ enum Opts {
 fn main() {
     let opts = Opts::from_args();
 
+    // Manually build the global thread pool so we can set the number
+    // of threads to use
     let thread_pool = match opts {
-        Opts::Gen { threads: Some(t), .. } | Opts::Load { threads: Some(t), .. } => {
+        Opts::Gen { threads: Some(t), .. } => {
             ThreadPoolBuilder::new().num_threads(t).build().unwrap()
         },
         _ => {
@@ -78,45 +72,55 @@ fn main() {
 
     thread_pool.install(|| {
         match opts {
-            Opts::Gen { undirected: true, vertices, edges, output, threads, .. } => {
-                let graph = AdjLists::gen_undirected(vertices, edges, None);
-                // let forest = dfs::par(&graph);
+            Opts::Gen { undirected, vertices, edges, output, algorithm, .. } => {
+                let algorithm = algorithm.unwrap_or(Algorithm::ParMatrix);
+                let forest = match algorithm {
+                    Algorithm::SeqList | Algorithm::ParList | Algorithm::CheatList => {
+                        let start = std::time::Instant::now();
+                        let graph = match undirected {
+                            true => AdjLists::gen_undirected(vertices, edges, None),
+                            false => AdjLists::gen_directed(vertices, edges, None),
+                        };
 
-                // if output {
-                //     println!("{:#?}", forest);
-                // }
-            },
-            Opts::Gen { undirected: false, vertices, edges, output, algorithm, .. } => {
-                let start;
+                        let after_gen = std::time::Instant::now();
+                        println!("matrix gen: {:?}", after_gen.duration_since(start));
 
-                let forest = match algorithm.unwrap_or(Algorithm::ParMatrix) {
-                    Algorithm::Seq => {
-                        let graph = AdjLists::gen_directed(vertices, edges, None);
-                        start = std::time::Instant::now();
-                        dfs::seq(&graph)
-                    }
-                    Algorithm::ParMatrix => {
-                        let before_gen = std::time::Instant::now();
+                        let forest = match algorithm {
+                            Algorithm::SeqList => dfs::seq(&graph),
+                            Algorithm::ParList => dfs::par(&graph),
+                            Algorithm::CheatList => dfs::cheat(&graph),
+                            _ => unreachable!()
+                        };
+                        println!("total dfs: {:?}", std::time::Instant::now().duration_since(after_gen));
 
-                        let graph = AdjMatrix::gen_directed(vertices, edges, None);
+                        forest
+                    },
+                    Algorithm::SeqMatrix | Algorithm::ParMatrix | Algorithm::CheatMatrix => {
+                        let start = std::time::Instant::now();
+                        let graph = match undirected {
+                            true => AdjMatrix::gen_undirected(vertices, edges, None),
+                            false => AdjMatrix::gen_directed(vertices, edges, None),
+                        };
 
-                        start = std::time::Instant::now();
-                        println!("matrix gen: {:?}", start.duration_since(before_gen));
+                        let after_gen = std::time::Instant::now();
+                        println!("matrix gen: {:?}", after_gen.duration_since(start));
 
-                        dfs::par_matrix(&graph)
-                    }
+                        let forest = match algorithm {
+                            Algorithm::SeqMatrix => dfs::seq(&graph),
+                            Algorithm::ParMatrix => dfs::par(&graph),
+                            Algorithm::CheatMatrix => dfs::cheat(&graph),
+                            _ => unreachable!()
+                        };
+                        println!("total dfs: {:?}", std::time::Instant::now().duration_since(after_gen));
+
+                        forest
+                    },
                 };
 
                 if output {
                     println!("{:#?}", forest);
-                    // println!("{:#?}", forest.iter().map(|tree| tree.edges.len()).collect::<Vec<_>>());
                 }
-
-                println!("Total run time: {:?}", std::time::Instant::now().duration_since(start));
             },
-            Opts::Load { .. } => {
-                unimplemented!()
-            }
         }
     });
 }
