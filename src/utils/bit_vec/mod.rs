@@ -1,3 +1,7 @@
+// Based on
+// https://github.com/contain-rs/bit-vec
+// https://github.com/contain-rs/bit-set
+
 use std::fmt::Debug;
 use std::ops::{Bound, RangeBounds};
 use std::sync::atomic::Ordering;
@@ -12,6 +16,7 @@ type AtomicB = std::sync::atomic::AtomicU64;
 type B = u64;
 static B_BITS: usize = std::mem::size_of::<B>() * 8;
 
+/// A fixed lenght bit vector which supports concurrent modification
 #[derive(Debug)]
 pub struct BitVec {
     storage: Box<[AtomicB]>,

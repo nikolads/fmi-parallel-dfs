@@ -83,7 +83,7 @@ fn main() {
                         };
 
                         let after_gen = std::time::Instant::now();
-                        println!("matrix gen: {:?}", after_gen.duration_since(start));
+                        println!("graph gen: {:?}", after_gen.duration_since(start));
 
                         let forest = match algorithm {
                             Algorithm::SeqList => dfs::seq(&graph),
@@ -103,7 +103,7 @@ fn main() {
                         };
 
                         let after_gen = std::time::Instant::now();
-                        println!("matrix gen: {:?}", after_gen.duration_since(start));
+                        println!("graph gen: {:?}", after_gen.duration_since(start));
 
                         let forest = match algorithm {
                             Algorithm::SeqMatrix => dfs::seq(&graph),
