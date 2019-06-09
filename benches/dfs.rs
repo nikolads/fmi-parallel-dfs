@@ -47,11 +47,11 @@ macro bench_seq($name: ident, $Graph: ty, $n: expr, $m: expr) {
 }
 
 bench_seq!(seq_list_n4k_m400k, AdjLists, 4_000, 400_000);
-bench_par!(par_list_t1_n4k_m400k, AdjLists, 1, 4_000, 400_000);
-bench_par!(par_list_t2_n4k_m400k, AdjLists, 2, 4_000, 400_000);
-bench_par!(par_list_t4_n4k_m400k, AdjLists, 4, 4_000, 400_000);
-bench_par!(par_list_t6_n4k_m400k, AdjLists, 6, 4_000, 400_000);
-bench_par!(par_list_t8_n4k_m400k, AdjLists, 8, 4_000, 400_000);
+bench_par!(par_list_t01_n4k_m400k, AdjLists, 1, 4_000, 400_000);
+bench_par!(par_list_t02_n4k_m400k, AdjLists, 2, 4_000, 400_000);
+bench_par!(par_list_t04_n4k_m400k, AdjLists, 4, 4_000, 400_000);
+bench_par!(par_list_t06_n4k_m400k, AdjLists, 6, 4_000, 400_000);
+bench_par!(par_list_t08_n4k_m400k, AdjLists, 8, 4_000, 400_000);
 bench_par!(par_list_t10_n4k_m400k, AdjLists, 10, 4_000, 400_000);
 bench_par!(par_list_t12_n4k_m400k, AdjLists, 12, 4_000, 400_000);
 bench_par!(par_list_t14_n4k_m400k, AdjLists, 14, 4_000, 400_000);
@@ -62,11 +62,11 @@ bench_par!(par_list_t28_n4k_m400k, AdjLists, 28, 4_000, 400_000);
 bench_par!(par_list_t32_n4k_m400k, AdjLists, 32, 4_000, 400_000);
 
 bench_seq!(seq_mat_n4k_m400k, AdjMatrix, 4_000, 400_000);
-bench_par!(par_mat_t1_n4k_m400k, AdjMatrix, 1, 4_000, 400_000);
-bench_par!(par_mat_t2_n4k_m400k, AdjMatrix, 2, 4_000, 400_000);
-bench_par!(par_mat_t4_n4k_m400k, AdjMatrix, 4, 4_000, 400_000);
-bench_par!(par_mat_t6_n4k_m400k, AdjMatrix, 6, 4_000, 400_000);
-bench_par!(par_mat_t8_n4k_m400k, AdjMatrix, 8, 4_000, 400_000);
+bench_par!(par_mat_t01_n4k_m400k, AdjMatrix, 1, 4_000, 400_000);
+bench_par!(par_mat_t02_n4k_m400k, AdjMatrix, 2, 4_000, 400_000);
+bench_par!(par_mat_t04_n4k_m400k, AdjMatrix, 4, 4_000, 400_000);
+bench_par!(par_mat_t06_n4k_m400k, AdjMatrix, 6, 4_000, 400_000);
+bench_par!(par_mat_t08_n4k_m400k, AdjMatrix, 8, 4_000, 400_000);
 bench_par!(par_mat_t10_n4k_m400k, AdjMatrix, 10, 4_000, 400_000);
 bench_par!(par_mat_t12_n4k_m400k, AdjMatrix, 12, 4_000, 400_000);
 bench_par!(par_mat_t14_n4k_m400k, AdjMatrix, 14, 4_000, 400_000);
