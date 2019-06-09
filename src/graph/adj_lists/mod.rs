@@ -193,29 +193,11 @@ impl AdjLists {
             .for_each(|list| list.sort_unstable())
     }
 
-    /// Iterator over all vertices in the graph.
-    pub fn vertices(&self) -> std::ops::Range<usize> {
-        0..self.n_verts
-    }
-
-    /// Rayon parallel iterator over all vertices in the graph.
-    pub fn vertices_par(&self) -> rayon::range::Iter<usize> {
-        (0..self.n_verts).into_par_iter()
-    }
-
     /// Iterator over all edges in the graph.
     pub fn edges<'a>(&'a self) -> impl Iterator<Item = Edge> + 'a {
         self.vertices()
             .flat_map(move |v| iter::repeat(v).zip(self.neighbours(v)))
             .map(|(from, to)| Edge::new(from, to))
-    }
-
-    /// Iterator over the neighbours of vertex `v`.
-    ///
-    /// The neighbours are all vertices `u` such that an edge from `v` to `u`
-    /// exists.
-    pub fn neighbours<'a>(&'a self, v: usize) -> std::iter::Cloned<std::slice::Iter<'a, usize>> {
-        self.lists[v].iter().cloned()
     }
 }
 
@@ -224,16 +206,22 @@ impl<'a> GraphRef<'a> for &'a AdjLists {
     type VerticesPar = rayon::range::Iter<usize>;
     type Neighbours = std::iter::Cloned<std::slice::Iter<'a, usize>>;
 
+    /// Iterator over all vertices in the graph.
     fn vertices(self) -> Self::Vertices {
-        self.vertices()
+        0..self.n_verts
     }
 
+    /// Rayon parallel iterator over all vertices in the graph.
     fn vertices_par(self) -> Self::VerticesPar {
-        self.vertices_par()
+        (0..self.n_verts).into_par_iter()
     }
 
+    /// Iterator over the neighbours of vertex `v`.
+    ///
+    /// The neighbours are all vertices `u` such that an edge from `v` to `u`
+    /// exists.
     fn neighbours(self, v: usize) -> Self::Neighbours {
-        self.neighbours(v)
+        self.lists[v].iter().cloned()
     }
 }
 

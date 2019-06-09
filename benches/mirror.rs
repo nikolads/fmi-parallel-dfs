@@ -6,7 +6,7 @@ extern crate rand;
 extern crate rayon;
 extern crate test;
 
-use parallel_dfs::graph::AdjLists;
+use parallel_dfs::graph::{AdjLists, GraphRef};
 use parallel_dfs::graph::adj_lists::mirror;
 use rand::distributions::Standard;
 use rand::prelude::*;

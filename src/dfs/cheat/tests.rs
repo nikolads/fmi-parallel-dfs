@@ -1,7 +1,7 @@
 use rayon::ThreadPoolBuilder;
 
 use crate::dfs;
-use crate::graph::AdjLists;
+use crate::graph::{AdjLists, GraphRef};
 
 #[test]
 fn visits_all() {

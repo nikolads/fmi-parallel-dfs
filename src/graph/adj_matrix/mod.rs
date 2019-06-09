@@ -44,7 +44,11 @@ impl AdjMatrix {
         let graph = Self::new(n_verts);
         const EDGES_PER_CHUNK: usize = 128;
 
-        let chunks = (0..n_edges).step_by(EDGES_PER_CHUNK).count();
+        let chunks = if n_edges % EDGES_PER_CHUNK == 0 {
+            n_edges / EDGES_PER_CHUNK
+        } else {
+            n_edges / EDGES_PER_CHUNK + 1
+        };
 
         // Calculate the number of seeds that we will need and pre-collect them in a
         // vector. We need this because we can't share a mutable iterator
@@ -207,10 +211,10 @@ impl AdjMatrix {
             let range = Uniform::new(0, n_verts);
 
             while added < edges_to_gen {
-                let from = range.sample(&mut rng);
                 let to = range.sample(&mut rng);
+                let from = rng.gen_range(0, to);
 
-                if from < to && graph.should_add(from, to) {
+                if graph.should_add(from, to) {
                     if graph.data.swap(graph.index(from, to), true) == false {
                         graph.data.set(graph.index(to, from), true);
                         added += 1;
@@ -223,25 +227,12 @@ impl AdjMatrix {
     }
 
     fn should_add(&self, from: usize, to: usize) -> bool {
-        from != to &&
-            self.data
-                .get(self.index(from, to))
-                .unwrap_or_else(|| panic!("bug: index {} is outside tree", self.index(from, to))) ==
-                false
+        from != to && self.data.get(self.index(from, to)).unwrap() == false
     }
 
+    /// Get index in the one dimentional array for the element at `row` and `col`.
     fn index(&self, row: usize, col: usize) -> usize {
         row * self.n_verts + col
-    }
-
-    /// Iterator over all vertices in the graph.
-    pub fn vertices(&self) -> std::ops::Range<usize> {
-        0..self.n_verts
-    }
-
-    /// Rayon parallel iterator over all vertices in the graph.
-    pub fn vertices_par(&self) -> rayon::range::Iter<usize> {
-        (0..self.n_verts).into_par_iter()
     }
 
     /// Iterator over all edges in the graph.
@@ -250,16 +241,6 @@ impl AdjMatrix {
             .flat_map(move |v| iter::repeat(v).zip(self.neighbours(v)))
             .map(|(from, to)| Edge::new(from, to))
     }
-
-    /// Iterator over the neighbours of vertex `v`.
-    ///
-    /// The neighbours are all vertices `u` such that an edge from `v` to `u`
-    /// exists.
-    pub fn neighbours<'a>(&'a self, v: usize) -> crate::utils::bit_vec::Ones<'a> {
-        let start = v * self.n_verts;
-        let end = (v + 1) * self.n_verts;
-        self.data.slice(start..end).ones()
-    }
 }
 
 impl<'a> GraphRef<'a> for &'a AdjMatrix {
@@ -267,15 +248,23 @@ impl<'a> GraphRef<'a> for &'a AdjMatrix {
     type VerticesPar = rayon::range::Iter<usize>;
     type Neighbours = crate::utils::bit_vec::Ones<'a>;
 
+    /// Iterator over all vertices in the graph.
     fn vertices(self) -> Self::Vertices {
-        self.vertices()
+        0..self.n_verts
     }
 
+    /// Rayon parallel iterator over all vertices in the graph.
     fn vertices_par(self) -> Self::VerticesPar {
-        self.vertices_par()
+        (0..self.n_verts).into_par_iter()
     }
 
+    /// Iterator over the neighbours of vertex `v`.
+    ///
+    /// The neighbours are all vertices `u` such that an edge from `v` to `u`
+    /// exists.
     fn neighbours(self, v: usize) -> Self::Neighbours {
-        self.neighbours(v)
+        let start = v * self.n_verts;
+        let end = (v + 1) * self.n_verts;
+        self.data.slice(start..end).ones()
     }
 }
