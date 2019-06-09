@@ -15,10 +15,17 @@ pub struct AdjMatrix {
 impl AdjMatrix {
     /// Create new empty graph
     pub fn new(n_verts: usize) -> Self {
-        Self {
+        let start = std::time::Instant::now();
+
+        let graph = Self {
             n_verts,
             data: BitVec::new(n_verts * n_verts),
-        }
+        };
+
+        let after_alloc = std::time::Instant::now();
+        println!("    graph alloc: {:?}", after_alloc.duration_since(start));
+
+        graph
     }
 
     /// Create new directed graph with randomly generated edges.
