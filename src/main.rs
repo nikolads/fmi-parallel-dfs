@@ -5,9 +5,11 @@ use structopt::StructOpt;
 use std::str::FromStr;
 
 enum Algorithm {
+    GenList,
     SeqList,
     ParList,
     CheatList,
+    GenMatrix,
     SeqMatrix,
     ParMatrix,
     CheatMatrix,
@@ -18,9 +20,11 @@ impl FromStr for Algorithm {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
+            "gen_list" => Ok(Algorithm::GenList),
             "seq_list" => Ok(Algorithm::SeqList),
             "par_list" => Ok(Algorithm::ParList),
             "cheat_list" => Ok(Algorithm::CheatList),
+            "gen_mat" => Ok(Algorithm::GenMatrix),
             "seq_mat" => Ok(Algorithm::SeqMatrix),
             "par_mat" => Ok(Algorithm::ParMatrix),
             "cheat_mat" => Ok(Algorithm::CheatMatrix),
@@ -75,6 +79,30 @@ fn main() {
             Opts::Gen { undirected, vertices, edges, output, algorithm, .. } => {
                 let algorithm = algorithm.unwrap_or(Algorithm::ParMatrix);
                 let forest = match algorithm {
+                    Algorithm::GenList => {
+                        let start = std::time::Instant::now();
+                        let _graph = match undirected {
+                            true => AdjLists::gen_undirected(vertices, edges, None),
+                            false => AdjLists::gen_directed(vertices, edges, None),
+                        };
+
+                        let after_gen = std::time::Instant::now();
+                        println!("graph gen: {:?}", after_gen.duration_since(start));
+
+                        vec![]
+                    },
+                    Algorithm::GenMatrix => {
+                        let start = std::time::Instant::now();
+                        let _graph = match undirected {
+                            true => AdjMatrix::gen_undirected(vertices, edges, None),
+                            false => AdjMatrix::gen_directed(vertices, edges, None),
+                        };
+
+                        let after_gen = std::time::Instant::now();
+                        println!("graph gen: {:?}", after_gen.duration_since(start));
+
+                        vec![]
+                    }
                     Algorithm::SeqList | Algorithm::ParList | Algorithm::CheatList => {
                         let start = std::time::Instant::now();
                         let graph = match undirected {
