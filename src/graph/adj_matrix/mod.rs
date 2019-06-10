@@ -215,7 +215,7 @@ impl AdjMatrix {
                 None => Prng::from_entropy(),
             };
 
-            let range = Uniform::new(0, n_verts);
+            let range = Uniform::new(1, n_verts);
 
             while added < edges_to_gen {
                 let to = range.sample(&mut rng);
@@ -275,3 +275,6 @@ impl<'a> GraphRef<'a> for &'a AdjMatrix {
         self.data.slice(start..end).ones()
     }
 }
+
+#[cfg(test)]
+mod tests;
