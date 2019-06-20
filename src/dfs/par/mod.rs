@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::graph::{Edge, GraphRef, Tree};
 
-pub fn run<'a, G: GraphRef<'a> + Copy + Sync>(graph: G) -> Vec<Tree> {
+pub fn run<'a, G: GraphRef<'a> + Copy + Send + Sync>(graph: G) -> Vec<Tree> {
     const NOT_VISITED: u32 = u32::max_value();
 
     let n_verts = graph.vertices().count();
@@ -99,52 +99,56 @@ fn descend<'a, G: GraphRef<'a> + Copy + Sync>(
     (tree, backtrack_stack)
 }
 
-fn backtrack<'a, G: GraphRef<'a> + Copy + Sync>(
+fn backtrack<'a, G: GraphRef<'a> + Copy + Send + Sync>(
     graph: G,
     owner: &[AtomicU32],
     backtrack_stack: &[u32],
     backtrack_start_index: usize,
 ) -> Vec<(u32, Tree)> {
     let n_verts = graph.vertices().count();
+    let mut result = vec![(0, Tree::new(0)); backtrack_stack.len()];
 
-    backtrack_stack
-        .par_iter()
-        .rev()
-        .enumerate()
-        .filter_map(|(backtrack_index, &node)| {
-            let backtrack_index = (backtrack_index + backtrack_start_index) as u32;
+    rayon::scope(|scope| {
+        backtrack_stack
+            .iter()
+            .rev()
+            .enumerate()
+            .zip(&mut result)
+            .for_each(|((backtrack_index, &node), out)| {
+                scope.spawn(move |_| {
+                    let backtrack_index = (backtrack_index + backtrack_start_index) as u32;
 
-            let mut used = vec![false; n_verts];
-            let mut stack = Vec::new();
-            let mut tree = Tree::new(node as usize);
+                    let mut used = vec![false; n_verts];
+                    let mut stack = Vec::new();
+                    let mut tree = Tree::new(node as usize);
 
-            graph
-                .neighbours(node as usize)
-                .rev()
-                .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
-                .for_each(|v| stack.push((node, v)));
+                    graph
+                        .neighbours(node as usize)
+                        .rev()
+                        .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
+                        .for_each(|v| stack.push((node, v)));
 
-            while let Some((parent, child)) = stack.pop() {
-                if used[child as usize] || !take(&owner[child as usize], backtrack_index) {
-                    continue;
-                }
+                    while let Some((parent, child)) = stack.pop() {
+                        if used[child as usize] || !take(&owner[child as usize], backtrack_index) {
+                            continue;
+                        }
 
-                used[child as usize] = true;
-                tree.add(Edge::new(parent as usize, child as usize));
+                        used[child as usize] = true;
+                        tree.add(Edge::new(parent as usize, child as usize));
 
-                graph
-                    .neighbours(child as usize)
-                    .rev()
-                    .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
-                    .for_each(|v| stack.push((child as u32, v)));
-            }
+                        graph
+                            .neighbours(child as usize)
+                            .rev()
+                            .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
+                            .for_each(|v| stack.push((child as u32, v)));
+                    }
 
-            match tree.edges.is_empty() {
-                true => None,
-                false => Some((backtrack_index, tree)),
-            }
-        })
-        .collect()
+                    *out = (backtrack_index, tree);
+                })
+            });
+    });
+
+    result
 }
 
 #[cfg(test)]
