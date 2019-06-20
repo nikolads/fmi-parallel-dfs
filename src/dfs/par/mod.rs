@@ -16,7 +16,7 @@ pub fn run<'a, G: GraphRef<'a> + Copy + Sync>(graph: G) -> Vec<Tree> {
 
     graph
         .vertices()
-        .filter(|&root| owner[root].load(Ordering::Relaxed) == NOT_VISITED)
+        .filter(|&root| owner[root].load(Ordering::SeqCst) == NOT_VISITED)
         .map(|root| {
             assert!(take(&owner[root], backtrack_start_index as u32));
 
@@ -40,7 +40,7 @@ pub fn run<'a, G: GraphRef<'a> + Copy + Sync>(graph: G) -> Vec<Tree> {
                 .par_iter_mut()
                 .for_each(|(backtrack_index, ref mut tree)| {
                     tree.edges
-                        .retain(|edge| owner[edge.to].load(Ordering::Relaxed) == *backtrack_index)
+                        .retain(|edge| owner[edge.to].load(Ordering::SeqCst) == *backtrack_index)
                 });
 
 
@@ -64,8 +64,8 @@ fn take(owner: &AtomicU32, new: u32) -> bool {
                 true => Some(new),
                 false => None,
             },
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
         )
         .is_ok()
 }
@@ -121,7 +121,7 @@ fn backtrack<'a, G: GraphRef<'a> + Copy + Sync>(
             graph
                 .neighbours(node as usize)
                 .rev()
-                .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
+                .filter(|&v| owner[v].load(Ordering::SeqCst) >= backtrack_index)
                 .for_each(|v| stack.push((node, v)));
 
             while let Some((parent, child)) = stack.pop() {
@@ -135,7 +135,7 @@ fn backtrack<'a, G: GraphRef<'a> + Copy + Sync>(
                 graph
                     .neighbours(child as usize)
                     .rev()
-                    .filter(|&v| owner[v].load(Ordering::Relaxed) >= backtrack_index)
+                    .filter(|&v| owner[v].load(Ordering::SeqCst) >= backtrack_index)
                     .for_each(|v| stack.push((child as u32, v)));
             }
 

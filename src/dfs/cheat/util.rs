@@ -69,6 +69,6 @@ impl<'a> State<'a> {
 }
 
 pub fn take_ownership(owner: &AtomicUsize, root: usize) -> bool {
-    let current = owner.compare_and_swap(usize::MAX, root, Ordering::Relaxed);
+    let current = owner.compare_and_swap(usize::MAX, root, Ordering::SeqCst);
     current == usize::MAX
 }
